@@ -5,7 +5,7 @@
 一个简洁轻量的菜单栏应用，实时显示你的 MacBook 正在消耗多少功率。
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.3.3-blue" />
+  <img src="https://img.shields.io/badge/version-1.3.4-blue" />
   <img src="https://img.shields.io/badge/platform-macOS%2014%2B-blue" />
   <img src="https://img.shields.io/badge/architecture-Apple%20Silicon-green" />
   <img src="https://img.shields.io/badge/license-MIT-orange" />
@@ -91,6 +91,12 @@ open build/PowerTop.app
 
 ## 更新内容
 
+### v1.3.4
+
+- **进度条对齐** — Popover 电量/健康度行使用固定标签列与图标，中英文下进度条起点一致
+- **详细参数排版** — 概览与键值行统一固定标签/进度条列；窗口宽度调整为 480pt
+- **电芯数据图标** — 改用兼容性更好的 SF Symbol，避免部分 macOS 版本图标缺失（感谢 @YangFong）
+
 ### v1.3.3
 
 - **充电上限感知** — 预计充满时间按实际充电目标计算（macOS 设置、AlDente 或优化充电暂停点），不再一律按 100% 估算
@@ -99,7 +105,7 @@ open build/PowerTop.app
 ### v1.3.2
 
 - **电池健康修复** — 从 `BatteryData` 正确读取设计容量、满充电量与健康度；详细参数概览进度条对齐，容量命名更清晰
-- **紧凑详细窗口** — 固定 460pt 宽度
+- **紧凑详细窗口** — 固定宽度以获得更紧凑的布局
 
 ### v1.3.1
 

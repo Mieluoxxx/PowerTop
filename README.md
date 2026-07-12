@@ -5,7 +5,7 @@
 A clean, lightweight menu bar app that shows you exactly how much power your MacBook is using.
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.3.3-blue" />
+  <img src="https://img.shields.io/badge/version-1.3.4-blue" />
   <img src="https://img.shields.io/badge/platform-macOS%2014%2B-blue" />
   <img src="https://img.shields.io/badge/architecture-Apple%20Silicon-green" />
   <img src="https://img.shields.io/badge/license-MIT-orange" />
@@ -91,6 +91,12 @@ open build/PowerTop.app
 
 ## What's New
 
+### v1.3.4
+
+- **Aligned metric bars** — Popover battery level/health rows use a fixed label column and icons so progress bars line up in both Chinese and English
+- **Detail window layout** — Shared fixed label/bar columns for overview metrics and key–value rows; window width set to 480pt
+- **Cell Data icon** — Uses a broadly available SF Symbol so the section icon is not missing on some macOS versions (thanks @YangFong)
+
 ### v1.3.3
 
 - **Charge-limit-aware estimates** — Time-to-full now targets your effective charge limit (macOS Settings, AlDente, or Optimized Charging hold) instead of always assuming 100%
@@ -99,7 +105,7 @@ open build/PowerTop.app
 ### v1.3.2
 
 - **Battery health fix** — Reads design capacity, full charge, and health % from `BatteryData` on Apple Silicon; reorganized detail view with aligned overview bars and clearer capacity labels
-- **Compact detail window** — Fixed 460pt width for a tighter layout
+- **Compact detail window** — Fixed width for a tighter layout
 
 ### v1.3.1
 
