@@ -548,9 +548,10 @@ struct PopoverView: View {
 // MARK: - Popover metric bar row
 
 /// Icon + fixed label + flexible bar + trailing value — bar starts align in EN/ZH.
+/// Font matches `PowerRowView` (12pt system, no scale-down, no rounded digits).
 private struct PopoverMetricBarRow: View {
-    /// Fits English "Battery Level" at 12pt without shifting the bar.
-    static let labelWidth: CGFloat = 88
+    /// Fits English "Battery Level" at full 12pt without shrinking the label.
+    static let labelWidth: CGFloat = 96
     static let valueMinWidth: CGFloat = 40
 
     let icon: String
@@ -569,18 +570,16 @@ private struct PopoverMetricBarRow: View {
                 .frame(width: PowerRowView.iconWidth)
 
             Text(label)
-                .font(.system(size: 12))
                 .foregroundStyle(.secondary)
                 .frame(width: Self.labelWidth, alignment: .leading)
                 .lineLimit(1)
-                .minimumScaleFactor(0.8)
 
             ProgressView(value: min(max(progress, 0), total), total: max(total, 1))
                 .progressViewStyle(.linear)
                 .tint(barTint)
 
             Text(valueText)
-                .font(.system(size: 12, weight: .medium, design: .rounded))
+                .fontWeight(.medium)
                 .monospacedDigit()
                 .foregroundStyle(valueColor)
                 .frame(minWidth: Self.valueMinWidth, alignment: .trailing)
