@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct DetailWindowView: View {
-    static let preferredWidth: CGFloat = 460
+    static let preferredWidth: CGFloat = 480
 
     let monitor: PowerMonitor
 
@@ -80,10 +80,12 @@ struct DetailWindowView: View {
                     value: "\(data.acAdapterWattage) W" + (data.adapterDescription.map { " (\($0))" } ?? "")
                 )
                 let usage = data.effectiveACOutputW / Double(data.acAdapterWattage) * 100
-                DetailRow(
+                OverviewMetricRow(
                     label: String(localized: "Charger Load Rate"),
                     value: String(format: "%.0f%%", usage),
-                    bar: (min(usage, 100), 100)
+                    barValue: min(usage, 100),
+                    barTotal: 100,
+                    barTint: usage > 90 ? .orange : .green
                 )
             }
 
@@ -643,6 +645,13 @@ struct DetailWindowView: View {
 
 // MARK: - Helper Views
 
+/// Shared column geometry so EN/ZH label length does not shift bars or values.
+private enum DetailLayout {
+    static let labelWidth: CGFloat = 156
+    static let barWidth: CGFloat = 80
+    static let hSpacing: CGFloat = 10
+}
+
 private struct DetailSection<Content: View>: View {
     let title: String
     let icon: String
@@ -664,11 +673,8 @@ private struct DetailSection<Content: View>: View {
     }
 }
 
-/// Overview rows share a fixed label + bar column; values align to the trailing edge.
+/// Label | fixed bar column | trailing value — used for at-a-glance metrics and charger load.
 private struct OverviewMetricRow: View {
-    static let labelWidth: CGFloat = 96
-    static let barWidth: CGFloat = 80
-
     let label: String
     let value: String
     var highlight: Bool = false
@@ -677,18 +683,28 @@ private struct OverviewMetricRow: View {
     var barTint: Color = .accentColor
 
     var body: some View {
-        HStack(alignment: .center, spacing: 10) {
+        HStack(alignment: .center, spacing: DetailLayout.hSpacing) {
             Text(label)
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
-                .frame(width: Self.labelWidth, alignment: .leading)
+                .frame(width: DetailLayout.labelWidth, alignment: .leading)
                 .lineLimit(2)
                 .minimumScaleFactor(0.85)
 
-            ProgressView(value: progressValue, total: max(barTotal, 1))
-                .progressViewStyle(.linear)
-                .tint(barTint)
-                .frame(width: Self.barWidth)
+            // Always reserve bar width so rows stay aligned when a value is missing.
+            Group {
+                if barValue != nil {
+                    ProgressView(value: progressValue, total: max(barTotal, 1))
+                        .progressViewStyle(.linear)
+                        .tint(barTint)
+                } else {
+                    ProgressView(value: 0, total: 1)
+                        .progressViewStyle(.linear)
+                        .tint(.clear)
+                        .opacity(0)
+                }
+            }
+            .frame(width: DetailLayout.barWidth)
 
             Spacer(minLength: 8)
 
@@ -723,26 +739,21 @@ private struct DetailSubheading: View {
     }
 }
 
+/// Key–value row with the same fixed label column as overview metrics (no bar).
 private struct DetailRow: View {
     let label: String
     let value: String
     var highlight: Bool = false
-    var bar: (value: Double, total: Double)? = nil
 
     var body: some View {
-        HStack(alignment: .top, spacing: 8) {
+        HStack(alignment: .top, spacing: DetailLayout.hSpacing) {
             Text(label)
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
-                .frame(minWidth: 128, maxWidth: 168, alignment: .leading)
+                .frame(width: DetailLayout.labelWidth, alignment: .leading)
+                .lineLimit(2)
+                .minimumScaleFactor(0.85)
                 .fixedSize(horizontal: false, vertical: true)
-
-            if let bar {
-                ProgressView(value: bar.value, total: bar.total)
-                    .progressViewStyle(.linear)
-                    .frame(maxWidth: 72)
-                    .padding(.top, 2)
-            }
 
             Spacer(minLength: 8)
 
@@ -751,7 +762,10 @@ private struct DetailRow: View {
                 .monospacedDigit()
                 .foregroundStyle(highlight ? .primary : .secondary)
                 .multilineTextAlignment(.trailing)
+                .lineLimit(3)
+                .minimumScaleFactor(0.85)
                 .fixedSize(horizontal: false, vertical: true)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }

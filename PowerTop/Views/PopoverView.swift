@@ -346,14 +346,17 @@ struct PopoverView: View {
 
     private var batterySection: some View {
         VStack(spacing: 6) {
-            HStack(spacing: 8) {
-                Text(String(localized: "Battery Level")).font(.system(size: 12)).foregroundStyle(.secondary)
-                ProgressView(value: Double(data.batteryPercent), total: 100)
-                    .progressViewStyle(.linear)
-                    .tint(data.batteryPercent <= 20 ? .red : (data.batteryPercent <= 50 ? .orange : .green))
-                Text("\(data.batteryPercent)%")
-                    .font(.system(size: 12, weight: .medium, design: .rounded)).monospacedDigit()
-            }
+            let levelTint: Color = data.batteryPercent <= 20
+                ? .red
+                : (data.batteryPercent <= 50 ? .orange : .green)
+            PopoverMetricBarRow(
+                icon: "battery.100",
+                iconColor: levelTint,
+                label: String(localized: "Battery Level"),
+                progress: Double(data.batteryPercent),
+                valueText: "\(data.batteryPercent)%",
+                barTint: levelTint
+            )
 
             if let timeText = data.estimatedTimeRemainingText {
                 PowerRowView(
@@ -365,16 +368,16 @@ struct PopoverView: View {
             }
 
             if let health = data.batteryHealthPercent {
-                HStack(spacing: 8) {
-                    Text(String(localized: "Health")).font(.system(size: 12)).foregroundStyle(.secondary)
-                    ProgressView(value: Double(health), total: 100)
-                        .progressViewStyle(.linear)
-                        .tint(health >= 80 ? .green : (health >= 60 ? .orange : .red))
-                    Text("\(health)%")
-                        .font(.system(size: 12, weight: .medium, design: .rounded))
-                        .monospacedDigit()
-                        .foregroundStyle(health >= 80 ? .green : (health >= 60 ? .orange : .red))
-                }
+                let healthTint: Color = health >= 80 ? .green : (health >= 60 ? .orange : .red)
+                PopoverMetricBarRow(
+                    icon: "heart.fill",
+                    iconColor: healthTint,
+                    label: String(localized: "Health"),
+                    progress: Double(health),
+                    valueText: "\(health)%",
+                    barTint: healthTint,
+                    valueColor: healthTint
+                )
             }
 
             if let temp = data.batteryTemperatureC {
@@ -539,5 +542,49 @@ struct PopoverView: View {
         }
         openWindow(id: "detail")
         NSApp.activate(ignoringOtherApps: true)
+    }
+}
+
+// MARK: - Popover metric bar row
+
+/// Icon + fixed label + flexible bar + trailing value — bar starts align in EN/ZH.
+private struct PopoverMetricBarRow: View {
+    /// Fits English "Battery Level" at 12pt without shifting the bar.
+    static let labelWidth: CGFloat = 88
+    static let valueMinWidth: CGFloat = 40
+
+    let icon: String
+    let iconColor: Color
+    let label: String
+    let progress: Double
+    var total: Double = 100
+    let valueText: String
+    let barTint: Color
+    var valueColor: Color = .primary
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 8) {
+            Image(systemName: icon)
+                .foregroundStyle(iconColor)
+                .frame(width: PowerRowView.iconWidth)
+
+            Text(label)
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+                .frame(width: Self.labelWidth, alignment: .leading)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+
+            ProgressView(value: min(max(progress, 0), total), total: max(total, 1))
+                .progressViewStyle(.linear)
+                .tint(barTint)
+
+            Text(valueText)
+                .font(.system(size: 12, weight: .medium, design: .rounded))
+                .monospacedDigit()
+                .foregroundStyle(valueColor)
+                .frame(minWidth: Self.valueMinWidth, alignment: .trailing)
+        }
+        .font(.system(size: 12))
     }
 }
