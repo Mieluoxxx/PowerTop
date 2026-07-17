@@ -62,7 +62,12 @@ func extractIntArray(from dict: [String: Any], key: String) -> [Int]? {
     return nil
 }
 
-/// Parses YYWW manufacture code embedded in binary `ManufacturerData` (e.g. 1916 → 2019 W16).
+/// Parses YYWW manufacture code from binary `ManufacturerData` (e.g. 1916 → 2019 W16).
+///
+/// Apple Silicon packs typically store length-prefixed ASCII fields, e.g.
+/// `0x04 "1916"  0x03 "002"  0x03 "ATL"`. Prefer those over a raw digit scan so
+/// unrelated 4-digit runs (which produced bogus dates like 2035-W14 on some M5 packs)
+/// are not treated as manufacture week.
 func parseBatteryManufactureDate(from props: [String: Any]) -> String? {
     let raw = props["ManufacturerData"]
     let data: Data?
@@ -76,17 +81,63 @@ func parseBatteryManufactureDate(from props: [String: Any]) -> String? {
     guard let data, data.count >= 4 else { return nil }
 
     let bytes = [UInt8](data)
-    for index in 0...(bytes.count - 4) {
-        let slice = bytes[index..<(index + 4)]
-        guard slice.allSatisfy({ (48...57).contains($0) }) else { continue }
-        guard let code = String(bytes: slice, encoding: .ascii) else { continue }
-        let yy = Int(code.prefix(2)) ?? 0
-        let ww = Int(code.suffix(2)) ?? 0
-        guard (10...40).contains(yy), (1...53).contains(ww) else { continue }
-        let year = 2000 + yy
-        return String(format: String(localized: "Manufacture Week Format"), year, ww)
+    let maxYear = Calendar.current.component(.year, from: Date()) + 1
+
+    // 1) Length-prefixed printable ASCII fields (preferred).
+    if let formatted = manufactureDateFromLengthPrefixedFields(bytes, maxYear: maxYear) {
+        return formatted
+    }
+
+    // 2) Fallback: scan consecutive digits with the same year/week sanity checks.
+    if let formatted = manufactureDateFromDigitScan(bytes, maxYear: maxYear) {
+        return formatted
+    }
+
+    return nil
+}
+
+/// Walk length-prefixed ASCII fields (`u8 length` + payload) and use the first valid YYWW.
+private func manufactureDateFromLengthPrefixedFields(_ bytes: [UInt8], maxYear: Int) -> String? {
+    var index = 0
+    while index < bytes.count {
+        let length = Int(bytes[index])
+        // Real pack strings are short (YYWW / rev / vendor); ignore absurd lengths.
+        if (1...16).contains(length), index + 1 + length <= bytes.count {
+            let payload = Array(bytes[(index + 1)..<(index + 1 + length)])
+            if payload.allSatisfy({ (32...126).contains($0) }) {
+                if length == 4, let formatted = manufactureWeekString(fromASCIIDigits: payload, maxYear: maxYear) {
+                    return formatted
+                }
+                index += 1 + length
+                continue
+            }
+        }
+        index += 1
     }
     return nil
+}
+
+/// Sliding window over four ASCII digits — only after TLV parse fails.
+private func manufactureDateFromDigitScan(_ bytes: [UInt8], maxYear: Int) -> String? {
+    guard bytes.count >= 4 else { return nil }
+    for index in 0...(bytes.count - 4) {
+        let slice = Array(bytes[index..<(index + 4)])
+        if let formatted = manufactureWeekString(fromASCIIDigits: slice, maxYear: maxYear) {
+            return formatted
+        }
+    }
+    return nil
+}
+
+/// Interprets four ASCII digit bytes as YYWW when year/week are plausible.
+private func manufactureWeekString(fromASCIIDigits digits: [UInt8], maxYear: Int) -> String? {
+    guard digits.count == 4, digits.allSatisfy({ (48...57).contains($0) }) else { return nil }
+    guard let code = String(bytes: digits, encoding: .ascii) else { return nil }
+    guard let yy = Int(code.prefix(2)), let ww = Int(code.suffix(2)) else { return nil }
+    let year = 2000 + yy
+    // Apple Silicon MacBook packs: not before ~2010; reject far-future garbage (e.g. 2035).
+    guard (2010...maxYear).contains(year), (1...53).contains(ww) else { return nil }
+    return String(format: String(localized: "Manufacture Week Format"), year, ww)
 }
 
 /// Capacity and health fields from `AppleSmartBattery`; many values live under `BatteryData` on Apple Silicon.
