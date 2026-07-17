@@ -5,7 +5,7 @@
 一个简洁轻量的菜单栏应用，实时显示你的 MacBook 正在消耗多少功率。
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.3.5-blue" />
+  <img src="https://img.shields.io/badge/version-1.3.6-blue" />
   <img src="https://img.shields.io/badge/platform-macOS%2014%2B-blue" />
   <img src="https://img.shields.io/badge/architecture-Apple%20Silicon-green" />
   <img src="https://img.shields.io/badge/license-MIT-orange" />
@@ -90,6 +90,10 @@ open build/PowerTop.app
 | <a href="screenshot/detail-window-health.png" target="_blank"><img src="screenshot/detail-window-health.png" width="400" alt="功率与电池健康"></a> | <a href="screenshot/detail-window-cells.png" target="_blank"><img src="screenshot/detail-window-cells.png" width="400" alt="电芯拓扑与均衡"></a> |
 
 ## 更新内容
+
+### v1.3.6
+
+- **制造日期解析** — 优先按 `ManufacturerData` 长度前缀字段解析，并拒绝不合理的未来周次（避免部分机型出现如 2035 年第 14 周的错误显示；issue #7）
 
 ### v1.3.5
 
