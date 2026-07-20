@@ -5,7 +5,7 @@
 A clean, lightweight menu bar app that shows you exactly how much power your MacBook is using.
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.3.6-blue" />
+  <img src="https://img.shields.io/badge/version-1.3.7-blue" />
   <img src="https://img.shields.io/badge/platform-macOS%2014%2B-blue" />
   <img src="https://img.shields.io/badge/architecture-Apple%20Silicon-green" />
   <img src="https://img.shields.io/badge/license-MIT-orange" />
@@ -90,6 +90,10 @@ open build/PowerTop.app
 | <a href="screenshot/detail-window-health.png" target="_blank"><img src="screenshot/detail-window-health.png" width="400" alt="Power and battery health"></a> | <a href="screenshot/detail-window-cells.png" target="_blank"><img src="screenshot/detail-window-cells.png" width="400" alt="Cell topology and balance"></a> |
 
 ## What's New
+
+### v1.3.7
+
+- **AC power-gap classification** — When system load exceeds AC input, only treat the battery as discharging if amperage or BatteryPower shows discharge; do not invent supplement power from the load gap alone (reduces false “battery supplement” during telemetry lag; issue #8)
 
 ### v1.3.6
 

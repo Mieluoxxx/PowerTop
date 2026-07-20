@@ -5,7 +5,7 @@
 一个简洁轻量的菜单栏应用，实时显示你的 MacBook 正在消耗多少功率。
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.3.6-blue" />
+  <img src="https://img.shields.io/badge/version-1.3.7-blue" />
   <img src="https://img.shields.io/badge/platform-macOS%2014%2B-blue" />
   <img src="https://img.shields.io/badge/architecture-Apple%20Silicon-green" />
   <img src="https://img.shields.io/badge/license-MIT-orange" />
@@ -90,6 +90,10 @@ open build/PowerTop.app
 | <a href="screenshot/detail-window-health.png" target="_blank"><img src="screenshot/detail-window-health.png" width="400" alt="功率与电池健康"></a> | <a href="screenshot/detail-window-cells.png" target="_blank"><img src="screenshot/detail-window-cells.png" width="400" alt="电芯拓扑与均衡"></a> |
 
 ## 更新内容
+
+### v1.3.7
+
+- **AC 功率差判定** — 系统负载高于 AC 输入时，仅在电流或 BatteryPower 明确显示放电时才判为电池补电，不再单靠负载差推算补电功率（减轻遥测不同步时的误报；issue #8）
 
 ### v1.3.6
 
