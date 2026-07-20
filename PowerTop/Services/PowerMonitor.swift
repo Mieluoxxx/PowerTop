@@ -508,7 +508,10 @@ final class PowerMonitor {
             return .charging(rateW: acInputW - systemLoadW)
         }
 
-        // Energy balance on AC: load > input → battery supplements the system.
+        // Energy balance on AC: load > input → battery may supplement the system.
+        // Only classify discharge when amperage/BatteryPower agree; do not force
+        // discharge from the power gap alone (SystemLoad vs SystemPowerIn can be
+        // briefly out of phase and mislabel charging as supplement — issue #8).
         if isOnAC, systemLoadW > acInputW + powerThreshold {
             if let ampPower = amperagePowerW, ampPower > powerThreshold {
                 let rate = batteryPowerFromTelemetry > powerThreshold
@@ -519,7 +522,8 @@ final class PowerMonitor {
             if batteryPowerFromTelemetry > powerThreshold {
                 return .discharging(rateW: batteryPowerFromTelemetry)
             }
-            return .discharging(rateW: systemLoadW - acInputW)
+            // No explicit discharge evidence — fall through rather than inventing
+            // a supplement rate from (systemLoad - acInput).
         }
 
         if let ampPower = amperagePowerW {
