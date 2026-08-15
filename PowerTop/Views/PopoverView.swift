@@ -1,25 +1,8 @@
 import SwiftUI
 
-private struct PopoverHeightPreferenceKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
-    }
-}
-
-private struct PopoverHeightObserver: View {
-    var body: some View {
-        GeometryReader { geo in
-            Color.clear
-                .preference(key: PopoverHeightPreferenceKey.self, value: geo.size.height)
-        }
-    }
-}
-
 struct PopoverView: View {
     let monitor: PowerMonitor
     @Environment(\.openWindow) private var openWindow
-    @State private var measuredContentHeight: CGFloat = 0
     @State private var cachedPopoverWindow: NSWindow?
 
     private var data: PowerData { monitor.currentData }
@@ -34,37 +17,26 @@ struct PopoverView: View {
             data.batteryHealthPercent != nil ? "health" : "nohealth",
             data.effectiveIsOnAC && data.acAdapterWattage > 0 ? "spec" : "nospec",
             data.estimatedTimeRemainingText != nil ? "time" : "notime",
+            monitor.isDataAvailable ? "available" : "unavailable",
+            monitor.launchAtLoginError == nil ? "loginok" : "loginerror",
         ].joined(separator: "-")
     }
 
     var body: some View {
-        // ZStack for reliable height measurement (intrinsic content size).
-        // Force full width on the container so there's no right-side blank.
-        // fixedSize only vertical (ideal height), horizontal fills the 280.
-        ZStack(alignment: .topLeading) {
-            contentSections
-                .frame(maxWidth: .infinity, alignment: .leading)
-            PopoverHeightObserver()
-        }
-        .frame(width: Self.popoverWidth, alignment: .topLeading)
-        .fixedSize(horizontal: false, vertical: true)
-        .onPreferenceChange(PopoverHeightPreferenceKey.self) { height in
-            if height > 1 {
-                measuredContentHeight = height
+        contentSections
+            .frame(width: Self.popoverWidth, alignment: .topLeading)
+            .fixedSize(horizontal: false, vertical: true)
+            .onChange(of: layoutSignature) { _, _ in
+                scheduleWindowFit(after: 0)
+                scheduleWindowFit(after: 0.05)
+            }
+            .onAppear {
+                scheduleWindowFit(after: 0)
+                scheduleWindowFit(after: 0.05)
                 DispatchQueue.main.async {
-                    fitPopoverWindow(to: height)
+                    NSApp.keyWindow?.makeFirstResponder(nil)
                 }
             }
-        }
-        .onChange(of: layoutSignature) { _, _ in
-            scheduleWindowFit(after: 0.04)
-        }
-        .onAppear {
-            scheduleWindowFit(after: 0)
-            DispatchQueue.main.async {
-                NSApp.keyWindow?.makeFirstResponder(nil)
-            }
-        }
     }
 
     // The actual stacked sections (no extra frame/fixed/background here).
@@ -472,23 +444,32 @@ struct PopoverView: View {
 
     private func scheduleWindowFit(after delay: TimeInterval) {
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-            guard measuredContentHeight > 1 else { return }
-            // When called due to layoutSignature change, we want to force a resize attempt
-            // even if previous window size looked similar (to handle cases where measurement
-            // was captured against a stale container size).
-            fitPopoverWindow(to: measuredContentHeight, force: true)
+            fitPopoverWindow(to: intrinsicContentHeight())
         }
+    }
+
+    private func intrinsicContentHeight() -> CGFloat {
+        let hostingView = NSHostingView(
+            rootView: contentSections
+                .frame(width: Self.popoverWidth, alignment: .topLeading)
+                .fixedSize(horizontal: false, vertical: true)
+        )
+        hostingView.sizingOptions = [.intrinsicContentSize]
+        hostingView.setFrameSize(NSSize(width: Self.popoverWidth, height: 1))
+        hostingView.layoutSubtreeIfNeeded()
+        return hostingView.fittingSize.height
     }
 
     private func popoverWindow() -> NSWindow? {
         if let cached = cachedPopoverWindow, cached.isVisible {
             return cached
         }
-        let candidates = NSApp.windows.filter { w in
-            w.isVisible &&
-            abs(w.frame.width - Self.popoverWidth) < 12 &&
-            w.frame.height > 60 && w.frame.height < 800 &&
-            !w.title.lowercased().contains("detail")
+        let candidates = NSApp.windows.filter { window in
+            let contentRect = window.contentRect(forFrameRect: window.frame)
+            return window.isVisible &&
+                abs(contentRect.width - Self.popoverWidth) < 12 &&
+                contentRect.height > 60 && contentRect.height < 800 &&
+                window.title != detailWindowTitle
         }
         let found = candidates.first
         if let f = found {
@@ -497,51 +478,71 @@ struct PopoverView: View {
         return found
     }
 
-    private func fitPopoverWindow(to contentHeight: CGFloat, force: Bool = false) {
+    private func fitPopoverWindow(to contentHeight: CGFloat) {
         DispatchQueue.main.async {
             guard contentHeight > 1 else { return }
             guard let window = self.popoverWindow() else { return }
 
-            let heightDiff = abs(window.frame.height - contentHeight)
-            let widthDiff = abs(window.frame.width - Self.popoverWidth)
-            if !force && heightDiff < 0.5 && widthDiff < 0.5 {
+            let currentFrame = window.frame
+            let targetContentRect = NSRect(
+                origin: .zero,
+                size: NSSize(width: Self.popoverWidth, height: contentHeight)
+            )
+            var targetFrame = window.frameRect(forContentRect: targetContentRect)
+            targetFrame.origin.x = currentFrame.midX - targetFrame.width / 2
+            targetFrame.origin.y = currentFrame.maxY - targetFrame.height
+
+            let heightDiff = abs(currentFrame.height - targetFrame.height)
+            let widthDiff = abs(currentFrame.width - targetFrame.width)
+            if heightDiff < 0.5 && widthDiff < 0.5 {
                 return
             }
 
-            // Prefer setContentSize + manual top-edge compensation. This tends to produce
-            // tighter results for menu bar popovers than full setFrame alone.
-            let oldHeight = window.frame.height
-            let delta = oldHeight - contentHeight
+            window.setFrame(targetFrame, display: true, animate: false)
 
-            let oldWidth = window.frame.width
-            var frame = window.frame
-            frame.size.width = Self.popoverWidth
-            frame.size.height = contentHeight
-            if widthDiff > 0.5 {
-                frame.origin.x += (oldWidth - Self.popoverWidth) / 2
-            }
-            frame.origin.y += delta
-
-            window.setFrame(frame, display: true, animate: false)
-
-            // Force the hosting view to re-layout after we changed the window size from outside.
             DispatchQueue.main.async {
                 window.contentView?.layoutSubtreeIfNeeded()
             }
         }
     }
 
+    private var detailWindowTitle: String {
+        String(localized: "PowerTop Details")
+    }
+
+    private func detailWindow() -> NSWindow? {
+        NSApp.windows.first { $0.title == detailWindowTitle }
+    }
+
     private func openDetailWindow() {
-        let detailTitle = String(localized: "PowerTop Details")
-        for window in NSApp.windows {
-            if window.title == detailTitle {
-                window.makeKeyAndOrderFront(nil)
+        popoverWindow()?.orderOut(nil)
+
+        if let window = detailWindow() {
+            DispatchQueue.main.async {
+                presentDetailWindow(window)
+            }
+            return
+        }
+
+        openWindow(id: "detail")
+        scheduleDetailWindowPresentation(attemptsRemaining: 6, after: 0)
+    }
+
+    private func scheduleDetailWindowPresentation(attemptsRemaining: Int, after delay: TimeInterval) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+            if let window = detailWindow() {
+                presentDetailWindow(window)
+            } else if attemptsRemaining > 0 {
+                scheduleDetailWindowPresentation(attemptsRemaining: attemptsRemaining - 1, after: 0.05)
+            } else {
                 NSApp.activate(ignoringOtherApps: true)
-                return
             }
         }
-        openWindow(id: "detail")
+    }
+
+    private func presentDetailWindow(_ window: NSWindow) {
         NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
     }
 }
 
