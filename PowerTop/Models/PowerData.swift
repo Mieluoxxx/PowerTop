@@ -301,10 +301,9 @@ struct PowerData {
         return effectiveACOutputW
     }
 
-    /// Raw wattage for the menu bar — AC charging shows total AC input; all other scenarios show system load.
+    /// Raw system load shown in the menu bar across all power states.
     var menuBarPowerW: Double {
-        if isBatteryCharging { return effectiveACOutputW }
-        return systemPowerW
+        systemPowerW
     }
 
     /// Rounded menu bar power, capped at 99 W.
@@ -390,7 +389,7 @@ struct PowerData {
     private var dischargePowerForEstimateW: Double? {
         if let smoothed = smoothedDischargePowerW, smoothed >= 0.2 { return smoothed }
         if isSupplementalDischarge {
-            let power = max(batterySupplementalW, systemPowerW)
+            let power = batterySupplementalW
             return power >= 0.2 ? power : nil
         }
         if !effectiveIsOnAC {

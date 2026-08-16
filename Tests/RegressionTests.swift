@@ -1,0 +1,282 @@
+import Darwin
+import Foundation
+
+@main
+struct RegressionTests {
+    private static var failures = 0
+
+    static func main() {
+        testSupplementalEstimateUsesBatteryPower()
+        testDischargeEstimatorResetsAcrossPowerSources()
+        testMenuBarAlwaysUsesSystemPower()
+        testManufactureDateDecoding()
+
+        guard failures == 0 else {
+            fputs("\(failures) regression test(s) failed\n", stderr)
+            exit(1)
+        }
+        print("All PowerTop regression tests passed")
+    }
+
+    private static func testSupplementalEstimateUsesBatteryPower() {
+        let data = makeData(
+            systemPowerW: 25,
+            batteryPowerW: 5,
+            acInputW: 20,
+            isOnAC: true,
+            connectionPhase: .onAC
+        )
+
+        expect(data.isSupplementalDischarge, "detect supplemental discharge")
+        expectEqual(data.batterySupplementalW, 5, "report battery contribution")
+        expectEqual(data.estimatedTimeRemainingMinutes, 600, "estimate 50 Wh at 5 W as 10 hours")
+    }
+
+    private static func testDischargeEstimatorResetsAcrossPowerSources() {
+        var estimator = BatteryTimeEstimator()
+        let supplemental = makeData(
+            systemPowerW: 25,
+            batteryPowerW: 5,
+            acInputW: 20,
+            isOnAC: true,
+            connectionPhase: .onAC
+        )
+        let supplementalPower = estimator.smoothedPower(for: supplemental).dischargeW
+        expectApproximately(supplementalPower, 5, "smooth battery contribution during supplemental discharge")
+
+        let batteryOnly = makeData(
+            systemPowerW: 25,
+            batteryPowerW: 25,
+            acInputW: 0,
+            isOnAC: false,
+            connectionPhase: .onBattery
+        )
+        let batteryPower = estimator.smoothedPower(for: batteryOnly).dischargeW
+        expectApproximately(batteryPower, 25, "reset EMA when switching to battery-only discharge")
+    }
+
+    private static func testMenuBarAlwaysUsesSystemPower() {
+        let batteryOnly = makeData(
+            systemPowerW: 18,
+            batteryPowerW: 18,
+            acInputW: 0,
+            isOnAC: false,
+            connectionPhase: .onBattery
+        )
+        expectEqual(batteryOnly.menuBarPowerW, 18, "show system power on battery")
+
+        let acPowered = makeData(
+            systemPowerW: 15,
+            batteryPowerW: 0,
+            acInputW: 15,
+            isOnAC: true,
+            connectionPhase: .onAC
+        )
+        expectEqual(acPowered.menuBarPowerW, 15, "show system power while AC powered")
+
+        let charging = makeData(
+            systemPowerW: 30,
+            batteryPowerW: -10,
+            acInputW: 40,
+            isOnAC: true,
+            isCharging: true,
+            connectionPhase: .onAC
+        )
+        expect(charging.isBatteryCharging, "detect active charging")
+        expectEqual(charging.menuBarPowerW, 30, "show system power while charging")
+
+        let supplemental = makeData(
+            systemPowerW: 25,
+            batteryPowerW: 5,
+            acInputW: 20,
+            isOnAC: true,
+            connectionPhase: .onAC
+        )
+        expectEqual(supplemental.menuBarPowerW, 25, "show system power during supplemental discharge")
+
+        let chargingBelowCap = makeData(
+            systemPowerW: 80,
+            batteryPowerW: -40,
+            acInputW: 120,
+            isOnAC: true,
+            isCharging: true,
+            connectionPhase: .onAC
+        )
+        expect(!chargingBelowCap.menuBarPowerExceedsCap, "do not warn for charger input above 99 W")
+
+        let systemAboveCap = makeData(
+            systemPowerW: 120,
+            batteryPowerW: -20,
+            acInputW: 140,
+            isOnAC: true,
+            isCharging: true,
+            connectionPhase: .onAC
+        )
+        expect(systemAboveCap.menuBarPowerExceedsCap, "warn for system power above 99 W")
+        expectEqual(systemAboveCap.menuBarPowerRoundedW, 99, "cap menu bar system power at 99 W")
+    }
+
+    private static func testManufactureDateDecoding() {
+        let now = ISO8601DateFormatter().date(from: "2026-08-16T12:00:00Z")!
+
+        expectEqual(
+            formatBatteryManufactureDate(52_987_853_550_643, gaugeName: "bq40z651", relativeTo: now),
+            "2026-02",
+            "decode the M5 issue sample at month precision"
+        )
+        expectEqual(
+            formatBatteryManufactureDate(56_286_354_946_354, gaugeName: "BQ40Z651", relativeTo: now),
+            "2021-10",
+            "decode a live battery sample case-insensitively"
+        )
+        expectEqual(
+            formatBatteryManufactureDate(packed("108043"), gaugeName: "A1964", relativeTo: now),
+            "2026-08",
+            "accept a valid date in the current month"
+        )
+        expectNil(
+            formatBatteryManufactureDate(52_987_853_550_643, gaugeName: "SN7038", relativeTo: now),
+            "reject a gauge with a different encoding"
+        )
+        expectNil(
+            formatBatteryManufactureDate(packed("032033"), gaugeName: "bq40z651", relativeTo: now),
+            "reject an impossible calendar date"
+        )
+        expectNil(
+            formatBatteryManufactureDate(packed("109043"), gaugeName: "bq40z651", relativeTo: now),
+            "reject a future month"
+        )
+        expectNil(
+            formatBatteryManufactureDate(packed("21A043"), gaugeName: "bq40z651", relativeTo: now),
+            "reject non-digit bytes"
+        )
+
+        let nestedProperties: [String: Any] = [
+            "BatteryData": ["ManufactureDate": NSNumber(value: 52_987_853_550_643)]
+        ]
+        expectEqual(
+            parseBatteryManufactureDate(
+                from: nestedProperties,
+                gaugeName: "bq40z651",
+                relativeTo: now
+            ),
+            "2026-02",
+            "read ManufactureDate from BatteryData"
+        )
+
+        let manufacturerDataOnly: [String: Any] = [
+            "ManufacturerData": Data([0x04, 0x31, 0x39, 0x31, 0x34])
+        ]
+        expectNil(
+            parseBatteryManufactureDate(
+                from: manufacturerDataOnly,
+                gaugeName: "bq40z651",
+                relativeTo: now
+            ),
+            "never infer a date from ManufacturerData"
+        )
+    }
+
+    private static func packed(_ storedDigits: String) -> Int {
+        storedDigits.utf8.reduce(0) { value, byte in
+            value << 8 | Int(byte)
+        }
+    }
+
+    private static func makeData(
+        systemPowerW: Double,
+        batteryPowerW: Double,
+        acInputW: Double,
+        isOnAC: Bool,
+        isCharging: Bool = false,
+        fullyCharged: Bool = false,
+        connectionPhase: PowerConnectionPhase
+    ) -> PowerData {
+        PowerData(
+            systemPowerW: systemPowerW,
+            batteryPowerW: batteryPowerW,
+            acInputW: acInputW,
+            acAdapterWattage: 140,
+            batteryPercent: 50,
+            isOnAC: isOnAC,
+            isCharging: isCharging,
+            fullyCharged: fullyCharged,
+            wallPowerW: nil,
+            adapterEfficiencyLossW: nil,
+            systemVoltageMV: nil,
+            systemCurrentMA: nil,
+            batteryVoltageMV: 10_000,
+            batteryAmperageMA: nil,
+            batteryTemperatureC: nil,
+            cycleCount: nil,
+            adapterDescription: nil,
+            dataSource: .telemetry,
+            timestamp: Date(timeIntervalSince1970: 0),
+            connectionPhase: connectionPhase,
+            batteryHealthPercent: nil,
+            designCapacityMAH: nil,
+            rawMaxCapacityMAH: nil,
+            nominalChargeCapacityMAH: nil,
+            designCycleCount: nil,
+            chargingVoltageMV: nil,
+            chargingCurrentMA: nil,
+            notChargingReason: nil,
+            vacVoltageLimit: nil,
+            cellVoltagesMV: nil,
+            stateOfCharge: 50,
+            qmaxMAH: nil,
+            batteryCellLayout: nil,
+            batteryParallelCellCurrents: nil,
+            dailyMinSoc: nil,
+            dailyMaxSoc: nil,
+            chargeLimitPercent: 100,
+            chargeLimitSource: .none,
+            totalOperatingTimeMin: nil,
+            lifetimeMaxTempC: nil,
+            lifetimeMinTempC: nil,
+            lifetimeAvgTempC: nil,
+            lifetimeMaxPackVoltageMV: nil,
+            lifetimeMinPackVoltageMV: nil,
+            lifetimeMaxChargeCurrentMA: nil,
+            lifetimeMaxDischargeCurrentMA: nil,
+            batterySerial: nil,
+            deviceName: nil,
+            instantAmperageMA: nil,
+            atCriticalLevel: nil,
+            permanentFailureStatus: nil,
+            batteryCellDisconnectCount: nil,
+            avgTimeToEmptyMinutes: nil,
+            avgTimeToFullMinutes: nil,
+            remainingCapacityMAH: 5_000,
+            fullChargeCapacityMAH: 5_000,
+            averageSystemPowerW: nil,
+            batteryManufactureDate: nil,
+            smoothedDischargePowerW: nil,
+            smoothedChargePowerW: nil
+        )
+    }
+
+    private static func expect(_ condition: @autoclosure () -> Bool, _ message: String) {
+        guard condition() else {
+            failures += 1
+            fputs("FAIL: \(message)\n", stderr)
+            return
+        }
+    }
+
+    private static func expectEqual<T: Equatable>(_ actual: T, _ expected: T, _ message: String) {
+        expect(actual == expected, "\(message): expected \(expected), got \(actual)")
+    }
+
+    private static func expectNil<T>(_ value: T?, _ message: String) {
+        expect(value == nil, "\(message): got \(String(describing: value))")
+    }
+
+    private static func expectApproximately(_ actual: Double?, _ expected: Double, _ message: String) {
+        guard let actual else {
+            expect(false, "\(message): got nil")
+            return
+        }
+        expect(abs(actual - expected) < 0.000_001, "\(message): expected \(expected), got \(actual)")
+    }
+}

@@ -7,7 +7,8 @@ struct BatteryTimeEstimator {
     private var lastMode: Mode?
 
     private enum Mode: Equatable {
-        case discharging
+        case batteryDischarging
+        case supplementalDischarging
         case charging
     }
 
@@ -40,7 +41,7 @@ struct BatteryTimeEstimator {
     }
 
     private mutating func updateDischargeEMA(for data: PowerData) -> Double? {
-        switchMode(.discharging)
+        switchMode(data.isSupplementalDischarge ? .supplementalDischarging : .batteryDischarging)
         let instant = instantDischargePowerW(for: data)
         guard instant >= 0.2 else { return dischargeEMA }
         dischargeEMA = ema(previous: dischargeEMA, sample: instant)
@@ -70,7 +71,7 @@ struct BatteryTimeEstimator {
 
     private func instantDischargePowerW(for data: PowerData) -> Double {
         if data.isSupplementalDischarge {
-            return max(data.batterySupplementalW, data.systemPowerW)
+            return data.batterySupplementalW
         }
         return data.systemPowerW
     }
